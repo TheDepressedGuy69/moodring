@@ -47,12 +47,12 @@ def _forward(logB: np.ndarray, pi: np.ndarray, A: np.ndarray):
     B = np.exp(logB - shift)
     alpha = np.empty((T, K))
     c = np.empty(T)
-    a = pi * B[0]
-    c[0] = a.sum()
+    a = np.maximum(pi, 1e-12) * B[0]  # a state's initial probability may have decayed to exactly 0
+    c[0] = max(a.sum(), 1e-300)
     alpha[0] = a / c[0]
     for t in range(1, T):
         a = (alpha[t - 1] @ A) * B[t]
-        s = a.sum()
+        s = max(a.sum(), 1e-300)
         c[t] = s
         alpha[t] = a / s
     loglik = float(np.log(c).sum() + shift.sum())
@@ -103,12 +103,25 @@ def _em(x: np.ndarray, p: HMMParams, max_iter: int, tol: float):
         gamma /= gamma.sum(axis=1, keepdims=True)
         xi_sum = A * (alpha[:-1].T @ (B[1:] * beta[1:] / c[1:, None]))
 
-        pi = gamma[0]
-        A = np.maximum(xi_sum / xi_sum.sum(axis=1, keepdims=True), A_FLOOR)
+        pi = np.maximum(gamma[0], A_FLOOR)
+        pi = pi / pi.sum()
+        # A state that owns no data (e.g. a warm-started "crisis" state whose crisis has left the
+        # window) must keep its old parameters, or 0/0 turns the whole fit into NaN.
+        rows = xi_sum.sum(axis=1, keepdims=True)
+        live_rows = rows[:, 0] > 1e-9
+        A_new = A.copy()
+        A_new[live_rows] = xi_sum[live_rows] / rows[live_rows]
+        A = np.maximum(A_new, A_FLOOR)
         A /= A.sum(axis=1, keepdims=True)
         w = gamma.sum(axis=0)
-        mu = (gamma * x[:, None]).sum(axis=0) / w
-        var = np.maximum((gamma * (x[:, None] - mu[None, :]) ** 2).sum(axis=0) / w, var_floor)
+        live = w > 1e-6
+        mu_new = mu.copy()
+        var_new = var.copy()
+        mu_new[live] = (gamma[:, live] * x[:, None]).sum(axis=0) / w[live]
+        var_new[live] = np.maximum(
+            (gamma[:, live] * (x[:, None] - mu_new[None, live]) ** 2).sum(axis=0) / w[live], var_floor
+        )
+        mu, var = mu_new, var_new
 
         if abs(ll - prev) / T < tol:
             break

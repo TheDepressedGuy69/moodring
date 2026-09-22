@@ -95,8 +95,10 @@ Annualisation adapts to the data (252 periods/year for equities, 365 for crypto)
 ## Limits
 
 - Regimes describe **volatility, not direction**. The "ann. ret" column is descriptive.
-- Rank-correlation gaps under ~0.05 are noise; there's no significance test, so don't
-  read a 0.02 win as a win.
+- There's no significance test on the reality check's rank-correlation gap. We measured
+  how often it happens on pure noise with no real regimes: about 1 time in 10 on ordinary
+  simulated returns, and up to about 1 time in 4 on fat-tailed noise. Treat one run's
+  "edge" verdict as a hint, not proof — it can and does happen by chance.
 - Daily close-to-close returns only. Yahoo's free endpoint is unofficial and may
   change; use `--csv` if it breaks.
 - This is a research tool. Nothing here is investment advice.

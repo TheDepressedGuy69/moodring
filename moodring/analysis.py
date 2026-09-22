@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -23,6 +23,7 @@ class Report:
     wf: WalkForwardResult | None
     disagreement: float | None
     periods: float = 252.0
+    warnings: list = field(default_factory=list)
 
     @property
     def k(self) -> int:
@@ -55,4 +56,28 @@ def analyze(
         wf = walk_forward(returns, k=k, min_train=min_train, refit_every=refit_every, periods=periods, progress=progress)
         disagreement = hindsight_disagreement(smooth.argmax(axis=1), wf)
 
-    return Report(label, source, dates[1:], close[1:], returns, params, filt, smooth, wf, disagreement, periods)
+    warnings = _data_warnings(returns, smooth)
+    return Report(label, source, dates[1:], close[1:], returns, params, filt, smooth, wf, disagreement, periods, warnings)
+
+
+def _data_warnings(returns: np.ndarray, smooth: np.ndarray) -> list:
+    """Things a careful analyst would want to know before trusting the picture."""
+    out = []
+    big = int((np.abs(returns) > 25.0).sum())
+    if big:
+        out.append(
+            f"{big} daily move{'s' if big != 1 else ''} larger than 25% ({np.abs(returns).max():.0f}% at most): "
+            "check for unadjusted splits or bad data, which can dominate the fit"
+        )
+    share = np.bincount(smooth.argmax(axis=1), minlength=smooth.shape[1]) / len(returns)
+    for j, sh in enumerate(share):
+        if sh < 0.01:
+            out.append(
+                f"regime {j + 1} of {smooth.shape[1]} covers only {sh * 100:.1f}% of days "
+                f"({int(round(sh * len(returns)))}): it may be fitting a few outliers rather than a real regime; "
+                "try fewer --states"
+            )
+    zero_share = float((returns == 0).mean())
+    if zero_share > 0.05:
+        out.append(f"{zero_share * 100:.0f}% of days have exactly zero return (halted or illiquid?): regimes may be unreliable")
+    return out

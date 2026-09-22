@@ -147,6 +147,11 @@ def render(r: Report, color: bool = True, width: int = 100, height: int = 12) ->
         out.append(st.paint(row[:12], codes[j], bold=True) + row[12:])
     out.append("")
 
+    for w in r.warnings:
+        out.extend(st.paint(line, 179) for line in _wrap(f"! {w}", 98 if width > 98 else width - 2))
+    if r.warnings:
+        out.append("")
+
     cur = int(now.argmax())
     nxt = now @ p.A
     out.append(
@@ -172,6 +177,18 @@ def render(r: Report, color: bool = True, width: int = 100, height: int = 12) ->
     out.append("")
     out.append(st.paint(" Research tool, not investment advice. Regimes describe volatility, not direction.", dim=True))
     return "\n".join(out)
+
+
+def _wrap(text: str, width: int) -> list:
+    lines, cur = [], " "
+    for word in text.split():
+        if len(cur) + len(word) + 1 > width and cur.strip():
+            lines.append(cur.rstrip())
+            cur = "   "
+        cur += word + " "
+    if cur.strip():
+        lines.append(cur.rstrip())
+    return lines
 
 
 def _reality_check(r: Report, st: Style, names: list, codes: list) -> list[str]:
@@ -213,16 +230,17 @@ def _reality_check(r: Report, st: Style, names: list, codes: list) -> list[str]:
     out.append(f"   HMM regime forecast      {h:5.2f}")
     out.append(f"   trailing 21-day vol      {b:5.2f}   <- the free baseline")
     diff = h - b
-    if diff > 0.05:
+    if diff > 0.10:
         verdict = "the HMM adds real information beyond trailing volatility"
-    elif diff > 0.02:
+    elif diff > 0.05:
         verdict = "a modest edge over trailing volatility"
-    elif diff >= -0.02:
+    elif diff >= -0.05:
         verdict = "a wash: about as good as trailing volatility, not better"
     else:
         verdict = "trailing volatility is the better forecaster here"
     out.append("   " + st.paint(verdict, bold=True))
-    out.append(st.paint("   (one sample, no significance test: treat gaps under ~0.05 as noise)", dim=True))
+    out.append(st.paint("   (one sample, no significance test: on pure noise with no real regimes,", dim=True))
+    out.append(st.paint("   this test still calls an 'edge' 10-25% of the time in our own testing)", dim=True))
     out.append("")
     if r.disagreement is not None:
         out.append(
